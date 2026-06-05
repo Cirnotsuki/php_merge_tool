@@ -1,0 +1,22 @@
+{
+  "name": "administrator/phpmerge",
+  "autoload": {
+    "psr-4": {
+      "Administrator\\Phpmerge\\": "src/"
+    }
+  },
+  "authors": [
+    {
+      "name": "玖月梓",
+      "email": "cirnotsuki@foxmail.com"
+    }
+  ],
+  "version": "1.0.0",
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/iserter/php-obfuscator"
+    }
+  ],
+  "require": {}
+}

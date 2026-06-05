@@ -1,0 +1,16 @@
+{
+  "name": "phpmerge",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "build": "node index.js && node compress.js && node compressphp.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "mkdirp": "^3.0.1",
+    "terser": "^5.46.1",
+    "uglify-php": "^1.0.7"
+  }
+}
