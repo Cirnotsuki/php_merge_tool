@@ -1,0 +1,45 @@
+# 头部信息（POT 已自动生成，无需改）
+msgid ""
+msgstr ""
+"Project-Id-Version: CirnoTOB 1.0\n"
+"POT-Creation-Date: 2026-03-10 06:15+0000\n"
+"PO-Revision-Date: 2026-03-18 07:04+0000\n"
+"Last-Translator: \n"
+"Language-Team: 简体中文\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Loco https://localise.biz/\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"Report-Msgid-Bugs-To: \n"
+"X-Loco-Version: 2.8.2; wp-6.9.1; php-8.3.30"
+
+msgid "Choose the menu to display below"
+msgstr "选择一个菜单作为产品展示列表"
+
+#: C:\xampp\htdocs\work\free\wp-content\themes\cirnotob/sections/specia-slider.php:58
+msgid "Read More"
+msgstr "了解更多"
+
+msgid "Search"
+msgstr "搜索"
+
+msgid "Search Chenda Glass"
+msgstr "搜索成达玻璃"
+
+msgid "Select Product Pages"
+msgstr "选择产品页"
+
+msgid "Showcase Menu"
+msgstr "产品展示列表"
+
+msgid "Showcase Section"
+msgstr "产品展示"
+
+#: C:\xampp\htdocs\work\free\wp-content\themes\cirnotob/sections/specia-navigation.php:40
+msgid "Toggle navigation"
+msgstr ""
+
+msgid "— Select Showcase Menu —"
+msgstr "— 请选择一个菜单 —"
