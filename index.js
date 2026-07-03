@@ -2,18 +2,25 @@ const phpMerge = require("./src");
 const fs = require("fs");
 const path = require("path");
 const mkdirp = require("mkdirp");
+const { getUUID } = require("ka-crypto");
 
-mkdirp.sync("dist");
-mkdirp.sync("entries");
-
-const dirs = fs.readdirSync("source");
+const sourceDir = path.join(__dirname, "entries");
+const distDir = path.join(__dirname, "dist");
 
 (async () => {
+  try {
+    fs.rmSync(distDir, { recursive: true });
+  } catch (error) {}
+
+  const dirs = fs.readdirSync(sourceDir);
   for (const dir of dirs) {
-    const source = path.join("source", dir);
-    const dist = path.join("dist", dir);
+    const source = path.join(sourceDir, dir);
+    const dist = path.join(distDir, dir);
     mkdirp.sync(dist);
 
-    await phpMerge(source, dist);
+    await phpMerge(source, dist, {
+      date: new Date(),
+      uuid: getUUID(),
+    });
   }
 })();

@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { mapDir } = require("../config.js");
 
 const phpMerge = require("./lib/php-merge.js");
 const phpHooks = require("./lib/php-hooks.js");
@@ -7,11 +8,18 @@ const phpOptimize = require("./lib/php-optimize.js");
 const phpDefine = require("./lib/php-define.js");
 const phpString = require("./lib/php-string.js");
 const phpVariable = require("./lib/php-variable.js");
+const { getUUID } = require("ka-crypto");
+const { mkdirp } = require("mkdirp");
 
-module.exports = async function (entryDir, distDir) {
+module.exports = async function (entryDir, distDir, options = {}) {
   const buildContext = {
     entryDir,
     distDir,
+
+    date: new Date().toLocaleDateString(),
+    time: +new Date(),
+    guid: getUUID(),
+    pool: [],
 
     constants: new Map(),
     functions: new Map(),
@@ -23,6 +31,8 @@ module.exports = async function (entryDir, distDir) {
     runtime: {
       stringPoolFunction: null,
     },
+
+    ...options,
   };
 
   try {
@@ -37,8 +47,12 @@ module.exports = async function (entryDir, distDir) {
 
     await phpOptimize(buildContext);
 
+    const jsonDir = path.join(mapDir, new Date(buildContext.time).toLocaleDateString());
+
+    mkdirp.sync(jsonDir);
+
     fs.writeFileSync(
-      path.join(distDir, "buildContext.json"),
+      path.join(jsonDir, buildContext.guid + ".json"),
       JSON.stringify(
         buildContext,
         function (key, value) {
@@ -50,8 +64,8 @@ module.exports = async function (entryDir, distDir) {
           }
           return value;
         },
-        2,
-      ),
+        2
+      )
     );
   }
-}
+};

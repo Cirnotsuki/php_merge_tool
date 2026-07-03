@@ -1,16 +1,23 @@
-const fs = require("fs/promises");
+const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const zlib = require("zlib");
+const { getUUID } = require("ka-crypto");
 
 // ========================================
 // String Pool Compiler
 // ========================================
 
 module.exports = async function (buildContext = {}) {
-  const ROOT_DIR = path.resolve(__dirname, buildContext.distDir || "./dist");
+  const ROOT_DIR = buildContext.distDir;
 
-  const ENTRY_FILE = path.join(ROOT_DIR, "functions.php");
+  let ENTRY_FILE = path.join(ROOT_DIR, "functions.php");
+  if (fs.existsSync(path.join(ROOT_DIR, "index.php"))) {
+    ENTRY_FILE = path.join(ROOT_DIR, "index.php");
+  }
+
+  const POOL_NAME = "KA_" + getUUID().slice(-6);
+  buildContext.pool = POOL_NAME;
 
   const DEBUG = true;
 
@@ -62,7 +69,7 @@ module.exports = async function (buildContext = {}) {
   /**
    * Runtime Function Name
    */
-  const runtimeFunctionName = "KA_" + crypto.randomBytes(6).toString("hex");
+  const runtimeFunctionName = "KA_" + getUUID().slice(-6);
 
   buildContext.runtime.stringPoolFunction = runtimeFunctionName;
 
@@ -104,7 +111,6 @@ module.exports = async function (buildContext = {}) {
     if (!str) {
       return true;
     }
-
     /**
      * PHP Template
      */
@@ -176,7 +182,7 @@ module.exports = async function (buildContext = {}) {
     /**
      * Runtime 自身
      */
-    if (str.includes("KA_POOL")) {
+    if (str.includes(POOL_NAME)) {
       return true;
     }
 
@@ -240,7 +246,7 @@ module.exports = async function (buildContext = {}) {
   // ========================================
 
   async function scanDirectory(dir) {
-    const entries = await fs.readdir(dir, {
+    const entries = fs.readdirSync(dir, {
       withFileTypes: true,
     });
 
@@ -252,7 +258,7 @@ module.exports = async function (buildContext = {}) {
       }
 
       if (entry.isDirectory()) {
-        await scanDirectory(fullPath);
+        scanDirectory(fullPath);
 
         continue;
       }
@@ -263,14 +269,38 @@ module.exports = async function (buildContext = {}) {
     }
   }
 
+  function isClassPropertyLine(line) {
+    return (
+      /^\s*(public|protected|private|static)\s+\$/i.test(line) ||
+      /^\s*const\s+/i.test(line)
+    );
+  }
+
+  function isInArrayContext(line, index) {
+    const before = line.slice(0, index);
+
+    // 最近是否出现 [
+    const lastOpen = before.lastIndexOf("[");
+
+    if (lastOpen === -1) return false;
+
+    const afterOpen = before.slice(lastOpen);
+
+    // 简单判断是否是 callable array
+    return afterOpen.includes(",");
+  }
+
+  function isClassRefContext(line, index) {
+    const before = line.slice(0, index);
+
+    return /::\s*class/.test(before);
+  }
+
   // ========================================
   // Collect Strings
   // ========================================
 
   async function collectStrings() {
-    /**
-     * 只处理单引号
-     */
     const stringRegex = /'((?:\\.|[^'\\])*)'/g;
 
     let stringId = stringMap.size;
@@ -278,44 +308,96 @@ module.exports = async function (buildContext = {}) {
     for (const file of phpFiles) {
       logger.log(`🔍 扫描字符串: ${path.relative(ROOT_DIR, file)}`);
 
-      const content = await fs.readFile(file, "utf8");
+      const content = fs.readFileSync(file, "utf8");
 
-      /**
-       * Runtime 文件跳过
-       */
       if (content.includes("KA_RUNTIME_START")) {
         continue;
       }
 
-      let match;
+      const lines = content.split("\n");
 
-      while ((match = stringRegex.exec(content)) !== null) {
-        const value = match[1];
+      let offset = 0;
 
-        const matchIndex = match.index;
+      // =========================
+      // 状态机：class / function
+      // =========================
+      let inClass = false;
+      let braceDepth = 0;
 
-        /**
-         * Symbol Context
-         */
-        if (shouldSkipByContext(content, matchIndex)) {
-          continue;
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // =========================
+        // class 进入判断
+        // =========================
+        if (!inClass && /\bclass\s+\w+/i.test(line)) {
+          inClass = true;
         }
 
-        /**
-         * Skip
-         */
-        if (shouldSkipString(value)) {
-          continue;
+        // =========================
+        // brace depth（用于 class 生命周期）
+        // =========================
+        for (const ch of line) {
+          if (ch === "{") braceDepth++;
+          if (ch === "}") braceDepth--;
+
+          if (inClass && braceDepth === 0) {
+            inClass = false;
+          }
         }
 
-        /**
-         * 已存在
-         */
-        if (stringMap.has(value)) {
-          continue;
+        // =========================
+        // 扫描字符串（只在当前行）
+        // =========================
+        stringRegex.lastIndex = 0;
+
+        let match;
+        while ((match = stringRegex.exec(line)) !== null) {
+          const value = match[1];
+          const matchIndex = offset + match.index;
+
+          /**
+           * runtime context skip
+           */
+          if (shouldSkipByContext(content, matchIndex)) {
+            continue;
+          }
+
+          /**
+           * 🚀 关键新增：排除 callable / array context
+           */
+          if (
+            isInArrayContext(line, match.index) ||
+            isClassRefContext(line, match.index)
+          ) {
+            continue;
+          }
+
+          /**
+           * class 属性 / const 排除（关键）
+           */
+          if (inClass && isClassPropertyLine(line)) {
+            continue;
+          }
+
+          /**
+           * 自定义过滤
+           */
+          if (shouldSkipString(value)) {
+            continue;
+          }
+
+          /**
+           * 去重
+           */
+          if (stringMap.has(value)) {
+            continue;
+          }
+
+          stringMap.set(value, stringId++);
         }
 
-        stringMap.set(value, stringId++);
+        offset += line.length + 1;
       }
     }
   }
@@ -324,42 +406,176 @@ module.exports = async function (buildContext = {}) {
   // Replace Strings
   // ========================================
 
+  const classParams = {
+    status: 0,
+    inString: false,
+    stringQuote: null, // 当前字符串类型
+    escape: false, // 是否处于转义状态
+    symbols: [],
+  };
+
+  function handleClassParams(str) {
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+
+      // =========================
+      // 1. 转义处理（优先级最高）
+      // =========================
+      if (classParams.escape) {
+        classParams.escape = false;
+        continue;
+      }
+
+      if (ch === "\\") {
+        classParams.escape = true;
+        continue;
+      }
+
+      // =========================
+      // 2. 字符串处理
+      // =========================
+      if (classParams.inString) {
+        // 只有同类型引号才退出
+        if (ch === classParams.stringQuote) {
+          classParams.inString = false;
+          classParams.stringQuote = null;
+        }
+        continue; // 字符串内全部忽略
+      }
+
+      // 进入字符串
+      if (ch === "'" || ch === '"' || ch === "`") {
+        classParams.inString = true;
+        classParams.stringQuote = ch;
+        continue;
+      }
+
+      // =========================
+      // 3. 括号栈处理（仅非字符串）
+      // =========================
+      const last = classParams.symbols.at(-1);
+
+      if (ch === "(") {
+        classParams.symbols.push("(");
+        continue;
+      }
+
+      if (ch === ")" && last === "(") {
+        classParams.symbols.pop();
+        continue;
+      }
+
+      if (ch === "[") {
+        classParams.symbols.push("[");
+        continue;
+      }
+
+      if (ch === "]" && last === "[") {
+        classParams.symbols.pop();
+        continue;
+      }
+    }
+
+    return classParams;
+  }
+
   async function replaceStrings() {
     const stringRegex = /'((?:\\.|[^'\\])*)'/g;
 
     for (const file of phpFiles) {
       logger.log(`🔄 替换字符串: ${path.relative(ROOT_DIR, file)}`);
 
-      let content = await fs.readFile(file, "utf8");
+      const content = fs.readFileSync(file, "utf8");
 
-      /**
-       * Runtime Skip
-       */
       if (content.includes("KA_RUNTIME_START")) {
         continue;
       }
 
-      content = content.replace(stringRegex, (match, value, offset) => {
-        /**
-         * Symbol Context
-         */
-        if (shouldSkipByContext(content, offset)) {
-          return match;
+      const lines = content.split("\n");
+
+      let result = [];
+      let offset = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        if (classParams.status === 1) {
+          handleClassParams(line);
+          if (classParams.symbols.length === 0) {
+            classParams.status = 0;
+          }
         }
 
-        /**
-         * 未收录
-         */
-        if (!stringMap.has(value)) {
-          return match;
+        if (
+          /(private|public|protected)(\sstatic\s)?.*?=/.test(line) ||
+          classParams.status === 1
+        ) {
+          if (!/\sfunction\s\w+/.test(line)) {
+            console.log("findClassProperty: ", line);
+            classParams.status = 1;
+            handleClassParams(line);
+          }
         }
 
-        const id = stringMap.get(value);
+        stringRegex.lastIndex = 0;
 
-        return `${runtimeFunctionName}(${id})`;
-      });
+        let match;
+        let newLine = "";
+        let lastIndex = 0;
 
-      await fs.writeFile(file, content, "utf8");
+        while ((match = stringRegex.exec(line)) !== null) {
+          const value = match[1];
+
+          const matchIndex = match.index;
+
+          /**
+           * 1. context skip（用行级更稳定）
+           */
+          if (shouldSkipByContext(content, offset + matchIndex)) {
+            continue;
+          }
+
+          /**
+           * 2. class / array / callable skip（关键）
+           */
+          if (
+            isInArrayContext(line, matchIndex) ||
+            isClassRefContext(line, matchIndex) ||
+            isClassPropertyLine(line)
+          ) {
+            continue;
+          }
+
+          /**
+           * 3. 未收录
+           */
+          if (!stringMap.has(value)) {
+            continue;
+          }
+
+          if (classParams.symbols.length > 0) {
+            continue;
+          }
+
+          const id = stringMap.get(value);
+
+          // 拼接 replace 前文本
+          newLine += line.slice(lastIndex, matchIndex);
+
+          // 替换
+          newLine += `${runtimeFunctionName}(${id})`;
+
+          lastIndex = matchIndex + match[0].length;
+        }
+
+        // 尾部拼接
+        newLine += line.slice(lastIndex);
+
+        result.push(newLine);
+        offset += line.length + 1;
+      }
+
+      fs.writeFileSync(file, result.join("\n"), "utf8");
     }
   }
 
@@ -382,66 +598,38 @@ module.exports = async function (buildContext = {}) {
       const compressed = zlib.gzipSync(json).toString("base64");
 
       runtimePoolCode = `
-if (!defined('KA_POOL')) {
-
-    define(
-        'KA_POOL',
-        gzdecode(
-            base64_decode(
-                '${compressed}'
-            )
-        )
-    );
-
+if (!defined('${POOL_NAME}')) {
+    define('${POOL_NAME}', gzdecode(base64_decode('${compressed}')));
 }
 `;
     } else {
       runtimePoolCode = `
-if (!defined('KA_POOL')) {
-
-    define(
-        'KA_POOL',
-        '${json.replace(/'/g, "\\'")}'
-    );
-
+if (!defined('${POOL_NAME}')) {
+    define('${POOL_NAME}', '${json.replace(/'/g, "\\'")}');
 }
 `;
     }
 
     return `
-
 /* KA_RUNTIME_START */
-
 /* ========================================
  * KA String Pool Runtime
  * ======================================== */
 
 ${runtimePoolCode}
-
 if (!function_exists('${runtimeFunctionName}')) {
-
-    function ${runtimeFunctionName}($id)
-    {
+    function ${runtimeFunctionName}($id) {
         static $pool = null;
 
         if ($pool === null) {
-
-            $pool = json_decode(
-                KA_POOL,
-                true
-            );
-
+            $pool = json_decode(${POOL_NAME}, true);
         }
-
         return $pool[$id] ?? '';
     }
-
 }
 
 /* ======================================== */
-
 /* KA_RUNTIME_END */
-
 `;
   }
 
@@ -452,7 +640,7 @@ if (!function_exists('${runtimeFunctionName}')) {
   async function injectRuntime() {
     logger.log("⚡ 注入 Runtime");
 
-    let content = await fs.readFile(ENTRY_FILE, "utf8");
+    let content = await fs.readFileSync(ENTRY_FILE, "utf8");
 
     /**
      * 防止重复注入
@@ -471,7 +659,7 @@ if (!function_exists('${runtimeFunctionName}')) {
 
     content = lines.join("\n");
 
-    await fs.writeFile(ENTRY_FILE, content, "utf8");
+    await fs.writeFileSync(ENTRY_FILE, content, "utf8");
   }
 
   // ========================================

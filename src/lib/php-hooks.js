@@ -1,4 +1,4 @@
-const fs = require("fs/promises");
+const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const PHPParser = require("php-parser");
@@ -7,7 +7,7 @@ module.exports = async function (buildContext = {}) {
   const ROOT_DIR = buildContext.distDir;
 
   let ENTRY_FILE = path.join(ROOT_DIR, "functions.php");
-  if(!fs.existsSync(ENTRY_FILE)) {
+  if (fs.existsSync(path.join(ROOT_DIR, "index.php"))) {
     ENTRY_FILE = path.join(ROOT_DIR, "index.php");
   }
 
@@ -126,7 +126,7 @@ module.exports = async function (buildContext = {}) {
   }
 
   try {
-    let source = await fs.readFile(ENTRY_FILE, "utf8");
+    let source = fs.readFileSync(ENTRY_FILE, "utf8");
 
     const ast = parser.parseCode(source);
 
@@ -217,7 +217,7 @@ module.exports = async function (buildContext = {}) {
 
     source = applyReplacements(source, replacements);
 
-    await fs.writeFile(ENTRY_FILE, source, "utf8");
+    fs.writeFileSync(ENTRY_FILE, source, "utf8");
 
     console.log(`🎉 完成，共处理 ${functionMap.size} 个函数`);
 

@@ -1,4 +1,4 @@
-const fs = require("fs/promises");
+const fs = require("fs");
 const path = require("path");
 
 // ========================================
@@ -10,7 +10,7 @@ module.exports = async function (buildContext = {}) {
   // Context
   // ========================================
 
-  const DIST_DIR = path.resolve(__dirname, buildContext.distDir || "./dist");
+  const DIST_DIR = buildContext.distDir;
 
   // ========================================
   // Config
@@ -255,7 +255,7 @@ module.exports = async function (buildContext = {}) {
 
     logger.log(`🧹 Optimize: ${path.relative(DIST_DIR, filePath)}`);
 
-    let content = await fs.readFile(filePath, "utf8");
+    let content = fs.readFileSync(filePath, "utf8");
 
     /**
      * Remove BOM
@@ -270,7 +270,16 @@ module.exports = async function (buildContext = {}) {
     /**
      * Save
      */
-    await fs.writeFile(filePath, cleaned, "utf8");
+    const headText = `<?php
+/**
+ * Build Date: ${new Date(buildContext.date).toLocaleDateString()}
+ * Build Time: ${buildContext.time}
+ * Build guid: ${buildContext.guid}
+ * Arthur: Kuzuki Azusa <https://github.com/cirnotsuki>
+*/
+?>\n`;
+
+    fs.writeFileSync(filePath, headText + cleaned, "utf8");
   }
 
   // ========================================
@@ -278,7 +287,7 @@ module.exports = async function (buildContext = {}) {
   // ========================================
 
   async function walk(dir) {
-    const entries = await fs.readdir(dir, {
+    const entries = await fs.readdirSync(dir, {
       withFileTypes: true,
     });
 

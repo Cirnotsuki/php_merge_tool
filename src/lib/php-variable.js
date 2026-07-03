@@ -1,7 +1,8 @@
-const fs = require("fs/promises");
+const fs = require("fs");
 const path = require("path");
-const crypto = require("crypto");
+const { getUUID } = require("ka-crypto");
 const PHPParser = require("php-parser");
+const randomPrefix = require("../utils/randomPrefix");
 
 async function fixMissedVariables(content, buildContext) {
   for (const [key, newName] of buildContext.variables) {
@@ -15,7 +16,9 @@ async function fixMissedVariables(content, buildContext) {
 module.exports = async function (buildContext = {}) {
   buildContext.variables ??= new Map();
   const variableMap = buildContext.variables;
-  const PREFIX = "$ka_v_";
+  const PREFIX = () => {
+    return randomPrefix();
+  };
   const ROOT_DIR = buildContext.distDir;
 
   const parser = new PHPParser.Engine({
@@ -58,10 +61,10 @@ module.exports = async function (buildContext = {}) {
   const phpFiles = [];
 
   async function scan(dir) {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) await scan(full);
+      if (entry.isDirectory()) scan(full);
       if (full.endsWith(".php")) phpFiles.push(full);
     }
   }
@@ -71,13 +74,8 @@ module.exports = async function (buildContext = {}) {
       return variableMap.get(name);
     }
 
-    const hash = crypto
-      .createHash("md5")
-      .update(name)
-      .digest("hex")
-      .substring(0, 8);
-
-    const newName = PREFIX + hash;
+    const uuid = getUUID(true);
+    const newName = PREFIX() + uuid.slice(-4);
 
     variableMap.set(name, newName);
 
@@ -105,7 +103,7 @@ module.exports = async function (buildContext = {}) {
     if (!parent) return false;
     if (
       ["parameter", "global", "staticvariable", "catch", "use"].includes(
-        parent.kind,
+        parent.kind
       )
     )
       return false;
@@ -160,7 +158,7 @@ module.exports = async function (buildContext = {}) {
   await scan(ROOT_DIR);
 
   for (const file of phpFiles) {
-    let source = await fs.readFile(file, "utf8");
+    let source = fs.readFileSync(file, "utf8");
     let ast;
     try {
       ast = parser.parseCode(source);
@@ -226,7 +224,7 @@ module.exports = async function (buildContext = {}) {
     source = applyReplacements(source, replacements);
     // 第二步修复漏掉的变量
     source = await fixMissedVariables(source, buildContext);
-    await fs.writeFile(file, source, "utf8");
+    fs.writeFileSync(file, source, "utf8");
   }
 
   console.log(`变量混淆完成，共 ${variableMap.size} 个变量`);

@@ -1,6 +1,6 @@
-const fs = require("fs/promises");
+const fs = require("fs");
 const path = require("path");
-
+const mkdirp = require("mkdirp");
 // ========================================
 // PHP Merge Compiler
 // ========================================
@@ -10,14 +10,14 @@ module.exports = async function (buildContext = {}) {
   // Context
   // ========================================
 
-  const ROOT_DIR = path.resolve(
-    __dirname,
-    buildContext.entryDir || "./cirnotob",
-  );
+  const ROOT_DIR = buildContext.entryDir;
+  const OUTPUT_DIR = buildContext.distDir;
 
-  const OUTPUT_DIR = path.resolve(__dirname, buildContext.distDir || "./dist");
-
-  const ENTRY_FILE = "functions.php";
+  let ENTRY_FILE = "functions.php";
+  if (fs.existsSync(path.join(ROOT_DIR, "index.php"))) {
+    ENTRY_FILE = "index.php";
+  }
+  console.log("MERGE ENTRY_FILE", ENTRY_FILE);
 
   // ========================================
   // Config
@@ -59,9 +59,9 @@ module.exports = async function (buildContext = {}) {
   // Utils
   // ========================================
 
-  async function exists(filePath) {
+  function exists(filePath) {
     try {
-      await fs.access(filePath);
+      fs.accessSync(filePath);
 
       return true;
     } catch {
@@ -94,7 +94,7 @@ module.exports = async function (buildContext = {}) {
       return fileCache.get(filePath);
     }
 
-    let content = await fs.readFile(filePath, "utf8");
+    let content = await fs.readFileSync(filePath, "utf8");
 
     /**
      * Remove BOM
@@ -205,7 +205,7 @@ module.exports = async function (buildContext = {}) {
        */
       resolved = resolved.replace(
         /get_stylesheet_directory\(\)/g,
-        `'${ROOT_DIR}'`,
+        `'${ROOT_DIR}'`
       );
 
       variables[name] = resolved;
@@ -222,7 +222,6 @@ module.exports = async function (buildContext = {}) {
 
   function extractRequire(line) {
     const cleanLine = stripPhpComment(line);
-
     let inString = false;
 
     let stringChar = "";
@@ -249,10 +248,15 @@ module.exports = async function (buildContext = {}) {
          * require
          */
         for (const type of REQUIRE_TYPES) {
+          const next = cleanLine[i + type.length];
+
           if (
             cleanLine.startsWith(type, i) &&
-            /\b/.test(cleanLine[i + type.length] || " ")
+            (next === undefined || /\s|\(/.test(next))
           ) {
+            if (new RegExp(type + "\\s+dirname\\(").test(cleanLine)) continue;
+            
+            console.log("MergeInclude: " + JSON.stringify({ cleanLine, type }));
             return parseRequireExpression(cleanLine, i, type);
           }
         }
@@ -325,20 +329,18 @@ module.exports = async function (buildContext = {}) {
         if (char === "(") {
           depth++;
         } else if (char === ")") {
-
-        /**
-         * )
-         */
+          /**
+           * )
+           */
           depth--;
 
           if (depth <= 0) {
             break;
           }
         } else if (char === ";" && depth === 0) {
-
-        /**
-         * ;
-         */
+          /**
+           * ;
+           */
           break;
         }
 
@@ -384,7 +386,7 @@ module.exports = async function (buildContext = {}) {
      * Variables
      */
     const sortedVariables = Object.entries(variables).sort(
-      (a, b) => b[0].length - a[0].length,
+      (a, b) => b[0].length - a[0].length
     );
 
     for (const [name, value] of sortedVariables) {
@@ -498,7 +500,7 @@ module.exports = async function (buildContext = {}) {
       const dependencyPath = resolveRequirePath(
         requireInfo.expression,
         currentDir,
-        variables,
+        variables
       );
 
       /**
@@ -526,7 +528,10 @@ module.exports = async function (buildContext = {}) {
             .replace(/\s*\?>\s*$/i, "");
 
           result.push(
-            `// ===== Merge From: ${path.relative(ROOT_DIR, dependencyPath)} =====`,
+            `// ===== Merge From: ${path.relative(
+              ROOT_DIR,
+              dependencyPath
+            )} =====`
           );
 
           result.push(cleanContent);
@@ -553,7 +558,7 @@ module.exports = async function (buildContext = {}) {
   // ========================================
 
   async function copyRemainingFiles(dir) {
-    const entries = await fs.readdir(dir, {
+    const entries = fs.readdirSync(dir, {
       withFileTypes: true,
     });
 
@@ -590,14 +595,12 @@ module.exports = async function (buildContext = {}) {
       /**
        * Ensure Dir
        */
-      await fs.mkdir(path.dirname(outputPath), {
-        recursive: true,
-      });
+      mkdirp.sync(path.dirname(outputPath));
 
       /**
        * Copy
        */
-      await fs.copyFile(fullPath, outputPath);
+      fs.copyFileSync(fullPath, outputPath);
 
       logger.log(`📄 Copy File: ${relativePath}`);
     }
@@ -613,22 +616,22 @@ module.exports = async function (buildContext = {}) {
     /**
      * Root Exists
      */
-    if (!(await exists(ROOT_DIR))) {
+    if (!exists(ROOT_DIR)) {
       throw new Error(`Project Directory Not Found: ${ROOT_DIR}`);
     }
 
     /**
      * Entry Exists
      */
-    if (!(await exists(entryPath))) {
+    if (!exists(entryPath)) {
       throw new Error(`Entry File Not Found: ${entryPath}`);
     }
 
     /**
      * Clean Dist
      */
-    if (await exists(OUTPUT_DIR)) {
-      await fs.rm(OUTPUT_DIR, {
+    if (exists(OUTPUT_DIR)) {
+      fs.rmSync(OUTPUT_DIR, {
         recursive: true,
         force: true,
       });
@@ -637,11 +640,9 @@ module.exports = async function (buildContext = {}) {
     /**
      * Create Dist
      */
-    await fs.mkdir(OUTPUT_DIR, {
-      recursive: true,
-    });
+    mkdirp.sync(OUTPUT_DIR);
 
-    console.log("🚀 开始合并 PHP 文件...\n");
+    console.log(`🚀 开始合并 PHP 文件: ${entryPath}\n`);
 
     /**
      * Merge
@@ -653,7 +654,7 @@ module.exports = async function (buildContext = {}) {
     /**
      * Save
      */
-    await fs.writeFile(outputEntry, content, "utf8");
+    fs.writeFileSync(outputEntry, content, "utf8");
 
     console.log("\n📦 复制未处理文件...\n");
 

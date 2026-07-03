@@ -1,5 +1,8 @@
 node_modules/*
 cirnotob/*
 dist/*
+entries/*
 temp/*
 logs/*
+lib/*
+maps/*
