@@ -1,0 +1,14 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "Debug TSX (inspect)",
+			"type": "node",
+			"request": "launch",
+			"runtimeExecutable": "tsx",
+			"runtimeArgs": ["--inspect-brk"],
+			"args": ["./cmd/build.ts"],
+			"console": "integratedTerminal"
+		}
+	]
+}
