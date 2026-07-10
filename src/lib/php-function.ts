@@ -6,7 +6,7 @@ import { randomPrefix } from '../utils/randomPrefix';
 import { BuildContext, AstNode, AnyAstNode } from '../types';
 import { RESERVED } from '../config/constans';
 import { isKind } from '../utils/typeGard';
-
+import * as logger from '../utils/logger';
 // 扩展 BuildContext，增加函数名映射
 // interface BuildContext {
 //   variables: Map<string, string>;
@@ -89,7 +89,7 @@ export default async function (buildContext: BuildContext) {
 		try {
 			ast = parser.parseCode(source, file) as AstNode;
 		} catch (err) {
-			console.error('Parse Error:', file, `${err}`);
+			logger.error('Parse Error:', file, `${err}`);
 			continue;
 		}
 
@@ -159,6 +159,6 @@ export default async function (buildContext: BuildContext) {
 		fs.writeFileSync(file, source, 'utf8');
 	}
 
-	console.log(`函数名混淆完成，共 ${functionMap.size} 个函数`);
+	logger.log(`函数名混淆完成，共 ${functionMap.size} 个函数`);
 	return buildContext;
 }

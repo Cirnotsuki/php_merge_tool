@@ -18,6 +18,9 @@ export class Runtime {
 		| 'optimize'
 		| string = 'init';
 
+	static currentFile: string = '';
+	static currentLine: number = 0;
+
 	static get sourceDir() {
 		return this._sourceDir;
 	}

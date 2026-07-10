@@ -17,7 +17,7 @@ export default async function (buildContext: BuildContext) {
 	// Context
 	// ========================================
 
-	console.log('>> MERGE Entry File', Runtime.entryFile);
+	logger.log('>> MERGE Entry File', Runtime.entryFile);
 
 	// ========================================
 	// Config
@@ -196,7 +196,6 @@ export default async function (buildContext: BuildContext) {
 					if (cleanLine.startsWith(type, i) && (next === undefined || /\s|\(/.test(next))) {
 						if (new RegExp(type + '\\s+dirname\\(').test(cleanLine)) continue;
 
-						// console.log('MergeInclude: ' + JSON.stringify({ cleanLine, type }));
 						return parseRequireExpression(cleanLine, i, type);
 					}
 				}
@@ -437,7 +436,7 @@ export default async function (buildContext: BuildContext) {
 				continue;
 			}
 
-			logger.log(`🔗 Dependency: ${requireInfo.expression}`);
+			logger.log(`🔗 Dependency: ${requireInfo.expression}\n`);
 
 			/**
 			 * Resolve
@@ -493,17 +492,16 @@ export default async function (buildContext: BuildContext) {
 
 	async function copyRemainingFiles(dir: string) {
 		const files = await utils.scanDirectory(dir);
-		console.log(files);
 
-		for (const fullPath of files) {
+		await utils.fileIterator(files, async (file) => {
 			/**
 			 * Skip Merged
 			 */
-			if (processedFiles.has(fullPath)) {
-				continue;
+			if (processedFiles.has(file)) {
+				return;
 			}
 
-			const relativePath = path.relative(Runtime.sourceDir, fullPath);
+			const relativePath = path.relative(Runtime.sourceDir, file);
 
 			const outputPath = path.join(Runtime.distDir, relativePath);
 
@@ -515,10 +513,10 @@ export default async function (buildContext: BuildContext) {
 			/**
 			 * Copy
 			 */
-			await fsPromises.copyFile(fullPath, outputPath);
+			await fsPromises.copyFile(file, outputPath);
 
 			logger.log(`📄 复制文件: ${relativePath}`);
-		}
+		});
 	}
 
 	// ========================================
@@ -557,7 +555,7 @@ export default async function (buildContext: BuildContext) {
 		 */
 		mkdirp.sync(Runtime.distDir);
 
-		console.log(`🚀 开始合并 PHP 文件: ${entryPath}\n`);
+		logger.log(`🚀 开始合并 PHP 文件: ${entryPath}\n`);
 
 		/**
 		 * Merge
@@ -571,19 +569,19 @@ export default async function (buildContext: BuildContext) {
 		 */
 		fs.writeFileSync(outputEntry, content, 'utf8');
 
-		console.log('\n📦 复制未处理文件...\n');
+		logger.log('\n📦 复制未处理文件...\n');
 
 		/**
 		 * Copy Assets
 		 */
 		await copyRemainingFiles(Runtime.sourceDir);
 
-		console.log('\n🎉 合并完成');
+		logger.log('\n🎉 合并完成');
 
-		console.log(`📄 合并文件数: ${processedFiles.size}`);
+		logger.log(`📄 合并文件数: ${processedFiles.size}`);
 
 		return buildContext;
 	} catch (err) {
-		console.error(err);
+		logger.error(err);
 	}
 }

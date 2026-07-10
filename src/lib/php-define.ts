@@ -3,7 +3,7 @@ import path from 'path';
 import uuidv4 from '@ka-libs/crypto/uuidv4';
 import { BuildContext } from '../types';
 import * as logger from '../utils/logger';
-import { CONST_PREFIX } from '../config/constans';
+import { CONST_PREFIX, EXCLUDE_STRING } from '../config/constans';
 import * as utils from '../utils/utils';
 import { Runtime } from '../config/runtime';
 
@@ -69,6 +69,7 @@ export default async function (buildContext: BuildContext) {
 	 */
 	function shouldSkipConst(constName: string) {
 		return (
+			EXCLUDE_STRING.includes(constName) ||
 			/**
 			 * WP
 			 */
@@ -103,16 +104,13 @@ export default async function (buildContext: BuildContext) {
 	// Scan Directory
 	// ========================================
 
-
-
 	// ========================================
 	// Collect Constants
 	// ========================================
 
 	async function collectConstants() {
 		const defineRegex = /define\s*\(\s*['"]([A-Z0-9_]+)['"]/g;
-
-		for (const file of phpFiles) {
+		await utils.fileIterator(phpFiles, async (file) => {
 			logger.log(`🔍 扫描常量: ${path.relative(Runtime.distDir, file)}`);
 
 			const content = fs.readFileSync(file, 'utf8');
@@ -121,7 +119,7 @@ export default async function (buildContext: BuildContext) {
 			 * Skip Runtime
 			 */
 			if (isRuntimeFile(content)) {
-				continue;
+				return;
 			}
 
 			let match;
@@ -138,7 +136,7 @@ export default async function (buildContext: BuildContext) {
 
 				generateConstName(constName);
 			}
-		}
+		});
 	}
 
 	// ========================================
@@ -221,7 +219,7 @@ export default async function (buildContext: BuildContext) {
 	// ========================================
 
 	async function processFiles() {
-		for (const file of phpFiles) {
+		await utils.fileIterator(phpFiles, async (file) => {
 			logger.log(`🔄 替换常量: ${path.relative(Runtime.distDir, file)}`);
 
 			let content = fs.readFileSync(file, 'utf8');
@@ -230,7 +228,7 @@ export default async function (buildContext: BuildContext) {
 			 * Skip Runtime
 			 */
 			if (isRuntimeFile(content)) {
-				continue;
+				return;
 			}
 
 			content = replaceDefineConstants(content);
@@ -242,7 +240,7 @@ export default async function (buildContext: BuildContext) {
 			content = replaceConstUsage(content);
 
 			fs.writeFileSync(file, content, 'utf8');
-		}
+		});
 	}
 
 	// ========================================
@@ -250,18 +248,18 @@ export default async function (buildContext: BuildContext) {
 	// ========================================
 
 	try {
-		console.log('🚀 开始扫描 PHP 常量...\n');
+		logger.log('🚀 开始扫描 PHP 常量...\n');
 
-		phpFiles.push(...await utils.scanPHPFile(Runtime.distDir));
+		phpFiles.push(...(await utils.scanPHPFile(Runtime.distDir)));
 
-		console.log(`📦 共发现 ${phpFiles.length} 个 PHP 文件\n`);
+		logger.log(`📦 共发现 ${phpFiles.length} 个 PHP 文件\n`);
 
 		/**
 		 * 收集
 		 */
 		await collectConstants();
 
-		console.log(`📦 共发现 ${constantMap.size} 个常量\n`);
+		logger.log(`📦 共发现 ${constantMap.size} 个常量\n`);
 
 		/**
 		 * Debug
@@ -270,17 +268,17 @@ export default async function (buildContext: BuildContext) {
 			logger.log(`🔄 ${oldName} -> ${newName}`);
 		}
 
-		console.log('\n🚀 开始替换常量...\n');
+		logger.log('\n🚀 开始替换常量...\n');
 
 		/**
 		 * 替换
 		 */
 		await processFiles();
 
-		console.log('\n🎉 常量替换完成');
+		logger.log('\n🎉 常量替换完成');
 
 		return buildContext;
 	} catch (err) {
-		console.error('❌ 执行失败:', err);
+		logger.error('❌ 执行失败:', err);
 	}
 }

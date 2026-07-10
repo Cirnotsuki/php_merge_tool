@@ -211,10 +211,15 @@ export default async function (buildContext: BuildContext) {
 
 			const value = extractStringValue(node);
 			if (value === null) return;
+
 			if (shouldSkipString(value)) return;
 			if (stringMap.has(value)) return;
 
-			stringMap.set(value, getRandomID());
+			if (value in buildContext.replace) {
+				stringMap.set(buildContext.replace[value], getRandomID());
+			} else {
+				stringMap.set(value, getRandomID());
+			}
 		}
 
 		walk(ast, (node) => {
@@ -246,7 +251,6 @@ export default async function (buildContext: BuildContext) {
 			extractEncapsed(node, ({ isString, raw }) => {
 				if (isString) {
 					if (raw.length < MIN_STRING_LENGTH) {
-						console.log({ raw });
 						result.push(`'${raw}'`);
 					} else {
 						const id = stringMap.get(raw)!;
@@ -408,34 +412,34 @@ if (!function_exists('${runtimeFunctionName}')) {
 	// ========================================
 
 	try {
-		console.log('🚀 开始 AST String Pool Build...\n');
+		logger.log('🚀 开始 AST String Pool Build...\n');
 
 		phpFiles.push(...(await utils.scanPHPFile(buildContext.distDir)));
-		console.log(`📦 共扫描 ${phpFiles.length} 个 PHP 文件\n`);
+		logger.log(`📦 共扫描 ${phpFiles.length} 个 PHP 文件\n`);
 
 		// Phase 1: 收集所有可替换字符串
-		for (const file of phpFiles) {
+		await utils.fileIterator(phpFiles, async (file) => {
 			logger.log(`🔍 收集字符串: ${path.relative(buildContext.distDir, file)}`);
 			const source = fs.readFileSync(file, 'utf8');
-			if (source.includes('KA_RUNTIME_START')) continue;
+			if (source.includes('KA_RUNTIME_START')) return;
 
 			try {
 				const ast = parser.parseCode(source, file) as AstNode;
 				attachParent(ast);
 				collectStrings(ast);
 			} catch (err) {
-				console.error(`❌ 解析失败: ${file}`, err);
+				logger.error(`❌ 解析失败: ${file}`, err);
 			}
-		}
+		});
 
-		console.log(`📦 收集到 ${stringMap.size} 个字符串\n`);
+		logger.log(`📦 收集到 ${stringMap.size} 个字符串\n`);
 
 		if (ENABLE_STRING_POOL && stringMap.size > 0) {
 			// Phase 2: 替换字符串
-			for (const file of phpFiles) {
+			await utils.fileIterator(phpFiles, async (file) => {
 				logger.log(`🔄 替换字符串: ${path.relative(buildContext.distDir, file)}`);
 				const source = fs.readFileSync(file, 'utf8');
-				if (source.includes('KA_RUNTIME_START')) continue;
+				if (source.includes('KA_RUNTIME_START')) return;
 
 				try {
 					const ast = parser.parseCode(source, file) as AstNode;
@@ -446,21 +450,21 @@ if (!function_exists('${runtimeFunctionName}')) {
 						fs.writeFileSync(file, newSource, 'utf8');
 					}
 				} catch (err) {
-					console.error(`❌ 替换失败: ${file}`, err);
+					logger.error(`❌ 替换失败: ${file}`, err);
 				}
-			}
+			});
 
 			// Phase 3: 注入 Runtime
 			await injectRuntime();
 		}
 
-		console.log('\n🎉 AST String Pool 完成');
-		console.log(`⚡ Runtime Function: ${runtimeFunctionName}`);
-		console.log(`📊 字符串池大小: ${stringMap.size}`);
+		logger.log('\n🎉 AST String Pool 完成');
+		logger.log(`⚡ Runtime Function: ${runtimeFunctionName}`);
+		logger.log(`📊 字符串池大小: ${stringMap.size}`);
 
 		return buildContext;
 	} catch (err) {
-		console.error('❌ 执行失败:', err);
+		logger.error('❌ 执行失败:', err);
 		throw err;
 	}
 }

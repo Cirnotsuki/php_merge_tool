@@ -1,0 +1,42 @@
+import path from 'path';
+import os from 'os';
+
+export default {
+	debug: false,
+	prefix: 'KA_',
+
+	rootDir: path.resolve('./'),
+	randomNumberSize: 2,
+
+	excludes: ['vendor', 'node_modules', '.git', 'languages'],
+	reserved: ['languages'],
+
+	excludeString: ['/mu-plugins/decrypt.php', '/wp-load.php'],
+	external: [],
+	entries: ['functions.php', 'index.php'],
+
+	pathes:
+		os.hostname().toLocaleLowerCase() === 'cirnotsuki'
+			? {
+					source: 'X:/ChengdaGlass/@wp',
+					dist: 'X:/ChengdaGlass/laragon/www',
+				}
+			: {
+					source: 'F:/@My-Projects/wp-website',
+					dist: 'D:/laragon2/www',
+				},
+
+	buildDirs: ['./api', './wp-content/mu-plugins', './wp-content/themes/cirnotob'],
+	copyFiles: ['./wp-config.php', './.htaccess'],
+
+	replace: {
+		'http://localhost:5000/': 'http://114.132.229.184:5000/',
+	},
+
+	db: {
+		host: 'localhost',
+		database: 'wordpress',
+		user: 'wordpress',
+		password: '123456',
+	},
+};

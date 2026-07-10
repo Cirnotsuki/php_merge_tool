@@ -163,7 +163,7 @@ export default async function (buildContext: BuildContext) {
 			generateFunctionName(name);
 		});
 
-		console.log(`📦 发现 ${functions.size} 个函数`);
+		logger.log(`📦 发现 ${functions.size} 个函数`);
 
 		const replacements: { start: any; end: any; value: string | undefined }[] = [];
 
@@ -221,10 +221,10 @@ export default async function (buildContext: BuildContext) {
 
 		fs.writeFileSync(ENTRY_FILE, source, 'utf8');
 
-		console.log(`🎉 完成，共处理 ${functionMap.size} 个函数`);
+		logger.log(`🎉 完成，共处理 ${functionMap.size} 个函数`);
 
 		return buildContext;
 	} catch (err) {
-		console.error(err);
+		logger.error(err);
 	}
 }

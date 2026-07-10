@@ -9,6 +9,7 @@ export interface BuildContext {
 	time: number;
 	guid: string;
 	pool: string;
+	replace: { [key: string]: string };
 
 	constants: Map<string, string>;
 	functions: Map<string, string>;
@@ -25,6 +26,7 @@ export interface BuildOption {
 	time?: number;
 	guid?: string;
 	pool?: string;
+	replace?: { [key: string]: string };
 
 	constants?: Map<string, string>;
 	functions?: Map<string, string>;

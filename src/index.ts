@@ -27,6 +27,7 @@ export default async function (entryDir: string, distDir: string, options: Build
 		time: +new Date(),
 		guid: uuidv4(),
 		pool: '',
+		replace: {},
 
 		constants: new Map(),
 		functions: new Map(),

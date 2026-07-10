@@ -4,7 +4,7 @@ import { BuildContext } from '../types';
 import * as logger from '../utils/logger';
 import * as utils from '../utils/utils';
 import { Runtime } from '../config/runtime';
-import { EXCLUDES, TARGET_EXTENSION } from '../config/constans';
+import { ENTRIES, EXCLUDES, TARGET_EXTENSION } from '../config/constans';
 
 // ========================================
 // PHP Optimize Compiler
@@ -234,6 +234,15 @@ export default async function (buildContext: BuildContext) {
 		 */
 		const cleaned = stripPhpComments(content);
 
+		const protectedPhp = ENTRIES.includes(path.basename(filePath))
+			? ''
+			: `
+	if (!defined('ABSPATH')) {
+    	header('Location: /');
+    	exit;
+	}
+`;
+
 		/**
 		 * Save
 		 */
@@ -244,12 +253,9 @@ export default async function (buildContext: BuildContext) {
  * Build guid: ${buildContext.guid}
  * Arthur: Kuzuki Azusa <https://github.com/cirnotsuki>
 */
-if (!defined('ABSPATH')) {
-    header('Location: /');
-    exit;
-}
+${protectedPhp}
 ?>\n`;
-
+		// define( 'WP_CONTENT_DIR', ABSPATH . 'wp-content' );
 		fs.writeFileSync(filePath, headText + cleaned, 'utf8');
 	}
 
@@ -261,22 +267,21 @@ if (!defined('ABSPATH')) {
 	// Main
 	// ========================================
 
-	console.log('🧹 开始清理 PHP 注释...\n');
+	logger.log('🧹 开始清理 PHP 注释...\n');
 
 	try {
 		const phpFiles = await utils.scanPHPFile(Runtime.distDir);
-
-		for (const fullPath of phpFiles) {
+		await utils.fileIterator(phpFiles, async (file) => {
 			/**
 			 * Process File
 			 */
-			await processFile(fullPath);
-		}
+			await processFile(file);
+		});
 	} catch (err) {
-		console.error(err);
+		logger.error(err);
 	}
 
-	console.log('\n🎉 PHP Optimize 完成');
+	logger.log('\n🎉 PHP Optimize 完成');
 
 	return buildContext;
 }

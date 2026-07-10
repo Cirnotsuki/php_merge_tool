@@ -11,20 +11,24 @@ import chalk from 'chalk';
 // }
 export function log(...args: any[]) {
 	if (DEBUG) {
-		console.log('[INFO]', ...args)
+		console.log('[INFO]', ...args);
 	}
 }
 
 export function instance(...args: any[]) {
 	if (DEBUG) {
-		console.warn('[INST]',...args);
+		console.warn('[INST]', ...args);
 	}
 }
 
 export function warn(...args: any[]) {
-	console.warn(...args);
+	if (DEBUG) {
+		console.warn(...args);
+	}
 }
 
 export function error(...args: any[]) {
-	console.error(...args);
+	if (DEBUG) {
+		console.error(...args);
+	}
 }

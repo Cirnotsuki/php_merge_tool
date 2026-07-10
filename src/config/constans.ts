@@ -1,22 +1,7 @@
 import path from 'path';
 import fs from 'fs';
-import os from 'os';
+import config from '../../config';
 
-export const DEBUG = true;
-
-export const CONST_PREFIX = 'KA_';
-
-export const RANDOM_NUMBER_SIZE = 2;
-
-export const TARGET_EXTENSION = '.php';
-
-export const EXCLUDES = ['vendor', 'node_modules', '.git', 'languages'];
-export const RESERGVED = ['languages'];
-
-export const EXCLUDE_STRING = ['/mu-plugins/decrypt.php', 'SHORTINIT', 'ABSPATH'];
-export const EXTERNAL: string[] = [];
-export const ENTRIES = ['functions.php', 'index.php'];
-export const REQUIRE_TYPES = ['require', 'require_once', 'include', 'include_once'];
 export const STRING_OPT = {
 	/**
 	 * 启用字符串池
@@ -70,24 +55,12 @@ export const RESERVED = new Set([
 	'response',
 	'route',
 ]);
-export const ROOT_PATH =
-	os.hostname().toLocaleLowerCase() === 'cirnotsuki'
-		? {
-				source: 'X:/ChengdaGlass/@wp',
-				dist: 'X:/ChengdaGlass/laragon/www',
-				// dist: path.join(__dirname, "dist"),
-			}
-		: {
-				source: 'D:/laragon/www',
-				dist: 'D:/laragon5/www',
-				// dist: path.join(__dirname, "dist"),
-			};
 
-export const BUILD_DIRS = ['./api', './wp-content/mu-plugins', './wp-content/themes/cirnotob'];
-export const COPY_FILES = ['./wp-config.php', './.htaccess'];
+export const REQUIRE_TYPES = ['require', 'require_once', 'include', 'include_once'];
 
-export const ROOT_DIR = path.resolve('./');
+export const ROOT_DIR = config.rootDir || path.resolve('./');
 export const MAP_DIR = path.join(ROOT_DIR, 'maps');
+
 export const PUBLIC_KEY = fs.readFileSync(
 	path.resolve(ROOT_DIR, './src/config/public.pem'),
 	'utf-8',
@@ -97,3 +70,18 @@ export const PRIVATE_KEY = fs.readFileSync(
 	path.resolve(ROOT_DIR, './src/config/private.pem'),
 	'utf-8',
 );
+
+export const TARGET_EXTENSION = '.php';
+
+export const DEBUG = config.debug ?? true;
+
+export const CONST_PREFIX = config.prefix ?? 'KA_';
+
+export const RANDOM_NUMBER_SIZE = config.randomNumberSize ?? 2;
+
+export const EXCLUDES = [...config.excludes];
+export const RESERGVED = [...config.reserved];
+
+export const EXCLUDE_STRING = [...config.excludeString, 'ABSPATH', 'SHORTINIT'];
+export const EXTERNAL = [...config.external];
+export const ENTRIES = [...config.entries];

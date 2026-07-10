@@ -1,9 +1,11 @@
 import path from 'path';
 import fs from 'fs';
+import fsPromises from 'fs/promises';
 import { toCamelCase } from '@ka-libs/utils/helper';
 import { EXCLUDES, EXTERNAL, RESERGVED } from '../config/constans';
 import { Runtime } from '../config/runtime';
 import { getRandomBytes } from '@ka-libs/crypto/get-random-bytes';
+import type PHPParser from 'php-parser';
 
 export function normalizePath(p: string) {
 	return path.normalize(p).replace(/\\/g, '/');
@@ -83,7 +85,7 @@ export function exists(filePath: string) {
 	}
 }
 
-export function randomNumber(size: 1 | 2 | 3 | 4 = 4): number {
+export function randomNumber(size: number): number {
 	const bytes = getRandomBytes(4);
 
 	switch (size) {
@@ -136,4 +138,19 @@ export async function scanPHPFile(source: string) {
 		if (isReserved(fullPath)) return false;
 		return true;
 	});
+}
+
+export async function fileIterator(files: string[], callback: (file: string) => void) {
+	for (const file of files) {
+		Runtime.currentFile = file;
+		await callback(file);
+	}
+}
+
+export function getRaw(loc?: PHPParser.Location | null) {
+	if (!loc) return '';
+	const start = loc.start.offset ?? 0;
+	const end = loc.end.offset ?? 0;
+	const fileData = fs.readFileSync(Runtime.currentFile, 'utf-8');
+	return fileData.slice(start, end) || '';
 }

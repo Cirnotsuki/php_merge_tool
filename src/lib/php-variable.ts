@@ -7,15 +7,10 @@ import { BuildContext, AstNode, AnyAstNode } from '../types';
 import { RESERVED } from '../config/constans';
 import { isKind } from '../utils/typeGard';
 import * as utils from '../utils/utils';
+import * as logger from '../utils/logger';
+import { Runtime } from '../config/runtime';
 
-async function fixMissedVariables(content: string, buildContext: BuildContext) {
-	for (const [key, newName] of buildContext.variables) {
-		const original = key;
-		const regex = new RegExp(`(?<!\\$)\\$${original}\\b`, 'g');
-		content = content.replace(regex, newName);
-	}
-	return content;
-}
+const globalVariableRecord = new Map<string, Map<string, Set<AstNode>>>();
 
 export default async function (buildContext: BuildContext) {
 	const variableMap = buildContext.variables;
@@ -28,9 +23,6 @@ export default async function (buildContext: BuildContext) {
 		parser: { php7: true, extractDoc: false },
 		ast: { withPositions: true },
 	});
-
-	const phpFiles: string[] = [];
-
 	function generateName(name: string) {
 		if (variableMap.has(name)) {
 			return variableMap.get(name);
@@ -44,6 +36,27 @@ export default async function (buildContext: BuildContext) {
 		return newName;
 	}
 
+	function getRecord(node: AstNode<PHPParser.Variable>) {
+		if (!globalVariableRecord.has(Runtime.currentFile)) {
+			globalVariableRecord.set(Runtime.currentFile, new Map());
+		}
+
+		const varriableMap = globalVariableRecord.get(Runtime.currentFile)!;
+
+		if (!varriableMap.has(node.name)) {
+			varriableMap.set(node.name, new Set());
+		}
+
+		return varriableMap.get(node.name)!;
+	}
+
+	function setRecord(node: AstNode<PHPParser.Variable>) {
+		if (isKind(node, 'variable')) {
+			const record = getRecord(node);
+			record.add(node);
+		}
+	}
+
 	function attachParent(node: AstNode<PHPParser.Node>, parent?: AstNode<AnyAstNode> | null) {
 		if (!node || typeof node !== 'object') return;
 		node.parent = parent;
@@ -55,24 +68,20 @@ export default async function (buildContext: BuildContext) {
 		}
 	}
 
-	function isLocalVariable(node: AstNode, excluded: Set<string>) {
+	function isRenamableVariable(node: AstNode) {
 		if (!isKind(node, 'variable')) return false;
 		if (typeof node.name !== 'string') return false;
 		if (RESERVED.has(node.name)) return false;
-		if (excluded.has(node.name)) return false;
 
 		const parent = node.parent;
 		if (!parent) return false;
-		if (['parameter', 'global', 'staticvariable', 'catch', 'use'].includes(parent.kind))
+		if (['global'].includes(parent.kind)) {
+			const record = getRecord(node);
+			record.size > 0 ? console.log(Array.from(record)) : console.log('global: ', node.name);
 			return false;
-
-		if (isKind(parent, 'foreach')) {
-			if (
-				(isKind(parent.key, 'variable') && parent.key.name === node.name) ||
-				(isKind(parent.value, 'variable') && parent.value.name === node.name)
-			)
-				return false;
 		}
+
+		setRecord(node);
 		return true;
 	}
 
@@ -106,7 +115,10 @@ export default async function (buildContext: BuildContext) {
 		}
 	}
 
-	function applyReplacements(source: string, replacements: any[]) {
+	function applyReplacements(
+		source: string,
+		replacements: { start: number; end: number; value: string }[],
+	) {
 		replacements.sort((a: { start: number }, b: { start: number }) => b.start - a.start);
 		for (const r of replacements) {
 			source = source.slice(0, r.start) + r.value + source.slice(r.end);
@@ -114,16 +126,14 @@ export default async function (buildContext: BuildContext) {
 		return source;
 	}
 
-	phpFiles.push(...(await utils.scanPHPFile(ROOT_DIR)));
-
-	for (const file of phpFiles) {
+	await utils.fileIterator(await utils.scanPHPFile(ROOT_DIR), async (file) => {
 		let source = fs.readFileSync(file, 'utf-8');
 		let ast = null;
 		try {
 			ast = parser.parseCode(source, file) as AstNode;
 		} catch (err) {
-			console.error('Parse Error:', file, `${err}`);
-			continue;
+			logger.error('❌️ Parse Error:', file, `${err}`);
+			return;
 		}
 
 		attachParent(ast);
@@ -144,32 +154,9 @@ export default async function (buildContext: BuildContext) {
 
 			scopeCounter++;
 			const scopeId = scopeCounter;
-			const excluded = new Set<string>();
-
-			// 收集函数参数
-			for (const param of node.arguments || []) {
-				if (param.name && typeof param.name !== 'string') {
-					excluded.add(param.name.name);
-				}
-			}
-
-			// 收集 static 变量和 closure use
-			walk(node.body, (n: AstNode) => {
-				if (isKind(n, 'static')) {
-					for (const v of n.variables) {
-						excluded.add(v.variable.name + '');
-					}
-				}
-
-				if (isKind(n, 'closure')) {
-					for (const u of n.uses) {
-						excluded.add(u.name + '');
-					}
-				}
-			});
 
 			walk(node.body, (child: AstNode) => {
-				if (!isLocalVariable(child, excluded)) return;
+				if (!isRenamableVariable(child)) return;
 				if (!child.loc) return;
 				if (child.loc.start.offset === undefined) return;
 				if (child.loc.end.offset === undefined) return;
@@ -187,11 +174,9 @@ export default async function (buildContext: BuildContext) {
 		});
 
 		source = applyReplacements(source, replacements);
-		// 第二步修复漏掉的变量
-		source = await fixMissedVariables(source, buildContext);
 		fs.writeFileSync(file, source, 'utf8');
-	}
+	});
 
-	console.log(`变量混淆完成，共 ${variableMap.size} 个变量`);
+	logger.log(`✅️ 变量混淆完成，共 ${variableMap.size} 个变量`);
 	return buildContext;
 }
