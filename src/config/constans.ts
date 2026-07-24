@@ -24,6 +24,10 @@ export const STRING_OPT = {
 	MAX_STRING_LENGTH: 500,
 };
 
+export const VARIABLE_OPT = {
+	MIX_NAME_LENGTH: 0,
+};
+
 export const RESERVED = new Set([
 	'this',
 	'GLOBALS',

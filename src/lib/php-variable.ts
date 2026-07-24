@@ -3,180 +3,159 @@ import path from 'path';
 import { uuidv4 } from '@ka-libs/crypto/uuidv4';
 import PHPParser from 'php-parser';
 import { randomPrefix } from '../utils/randomPrefix';
-import { BuildContext, AstNode, AnyAstNode } from '../types';
-import { RESERVED } from '../config/constans';
-import { isKind } from '../utils/typeGard';
-import * as utils from '../utils/utils';
-import * as logger from '../utils/logger';
-import { Runtime } from '../config/runtime';
-
-const globalVariableRecord = new Map<string, Map<string, Set<AstNode>>>();
+import { AstNode, AnyAstNode, ScopeNode } from '../types';
+import { RESERVED, VARIABLE_OPT } from '../config/constans';
+import { isKind, isScopeNode } from '../utils/typeGard';
+import { fileIterator, normalizePath, scanPHPFile } from '../utils/utils';
+import logger from '../utils/logger';
+import { Runtime } from '../core/runtime';
+import { Ast } from '../core/ast';
+import { RecordVariable } from '../core/recordNode';
+import { BuildContext } from '../core/buildOption';
+import { getNodeName } from '../utils/variableUtil';
 
 export default async function (buildContext: BuildContext) {
-	const variableMap = buildContext.variables;
-	const PREFIX = () => {
-		return randomPrefix();
-	};
+	const variables = buildContext.variables;
 	const ROOT_DIR = buildContext.distDir;
 
-	const parser = new PHPParser.Engine({
-		parser: { php7: true, extractDoc: false },
-		ast: { withPositions: true },
-	});
-	function generateName(name: string) {
-		if (variableMap.has(name)) {
-			return variableMap.get(name);
-		}
+	function recordVariable(node: AstNode, replace?: string): void;
+	function recordVariable(node: AstNode, source?: RecordVariable | null): void;
+	function recordVariable(node: AstNode, arg: string | RecordVariable | null = null) {
+		if (node.name.length <= VARIABLE_OPT.MIX_NAME_LENGTH) return;
 
-		const uuid = uuidv4(true);
-		const newName = PREFIX() + uuid.slice(-4);
+		const record = node.lookup();
 
-		variableMap.set(name, newName);
-
-		return newName;
-	}
-
-	function getRecord(node: AstNode<PHPParser.Variable>) {
-		if (!globalVariableRecord.has(Runtime.currentFile)) {
-			globalVariableRecord.set(Runtime.currentFile, new Map());
-		}
-
-		const varriableMap = globalVariableRecord.get(Runtime.currentFile)!;
-
-		if (!varriableMap.has(node.name)) {
-			varriableMap.set(node.name, new Set());
-		}
-
-		return varriableMap.get(node.name)!;
-	}
-
-	function setRecord(node: AstNode<PHPParser.Variable>) {
-		if (isKind(node, 'variable')) {
-			const record = getRecord(node);
-			record.add(node);
-		}
-	}
-
-	function attachParent(node: AstNode<PHPParser.Node>, parent?: AstNode<AnyAstNode> | null) {
-		if (!node || typeof node !== 'object') return;
-		node.parent = parent;
-		for (const key in node) {
-			if (key === 'parent' || key === 'loc') continue;
-			const value = (node as any)[key];
-			if (Array.isArray(value)) value.forEach((v) => attachParent(v, node));
-			else attachParent(value, node);
-		}
-	}
-
-	function isRenamableVariable(node: AstNode) {
-		if (!isKind(node, 'variable')) return false;
-		if (typeof node.name !== 'string') return false;
-		if (RESERVED.has(node.name)) return false;
-
-		const parent = node.parent;
-		if (!parent) return false;
-		if (['global'].includes(parent.kind)) {
-			const record = getRecord(node);
-			record.size > 0 ? console.log(Array.from(record)) : console.log('global: ', node.name);
-			return false;
-		}
-
-		setRecord(node);
-		return true;
-	}
-
-	function walk(node: AstNode | null, callback: { (node: AstNode): void }) {
-		if (!node) {
+		if (record) {
+			record.resigns.push(node);
 			return;
 		}
 
-		callback(node);
+		if (arguments.length === 1) {
+			const uuid = uuidv4(true);
+			node.scope.setCache(node.name, new RecordVariable(node, randomPrefix() + uuid.slice(-4)));
+			return;
+		}
 
-		if (Array.isArray(node)) {
-			for (const child of node) {
-				walk(child, callback);
+		if (typeof arg === 'string') {
+			node.scope.setCache(node.name, new RecordVariable(node, arg));
+			return;
+		}
+
+		node.scope.setCache(node.name, new RecordVariable(node, arg));
+	}
+
+	function assignLeftIterator(left: AstNode) {
+		function iterator(node: AstNode, keys: string[] = []) {
+			if (isKind(node, 'list')) {
+				node.items.forEach((entry, index) => {
+					if (!isKind(entry, 'entry')) return;
+					iterator(entry.value as AstNode, keys.concat(getNodeName(entry.key || `${index}`)));
+				});
+				return;
 			}
-
-			return;
-		}
-
-		if (typeof node !== 'object') {
-			return;
-		}
-
-		const keys = Object.keys(node);
-
-		for (const key of keys) {
-			if (key === 'loc' || key === 'parent') {
-				continue;
+			if (isKind(node, 'variable')) {
+				if (keys.length > 0) {
+					node.setAttribute('assginKey', keys.join(','));
+				}
+				recordVariable(node);
+				return;
 			}
-
-			walk((node as any)[key], callback);
 		}
+		iterator(left);
 	}
 
-	function applyReplacements(
-		source: string,
-		replacements: { start: number; end: number; value: string }[],
-	) {
-		replacements.sort((a: { start: number }, b: { start: number }) => b.start - a.start);
-		for (const r of replacements) {
-			source = source.slice(0, r.start) + r.value + source.slice(r.end);
-		}
-		return source;
-	}
+	await fileIterator(await scanPHPFile(ROOT_DIR), async (file) => {
+		const ast = Ast.create(file);
 
-	await utils.fileIterator(await utils.scanPHPFile(ROOT_DIR), async (file) => {
-		let source = fs.readFileSync(file, 'utf-8');
-		let ast = null;
-		try {
-			ast = parser.parseCode(source, file) as AstNode;
-		} catch (err) {
-			logger.error('❌️ Parse Error:', file, `${err}`);
-			return;
-		}
-
-		attachParent(ast);
-
-		const visitedOffsets = new Set();
-		const replacements: { start: any; end: any; value: any }[] = [];
-		let scopeCounter = 0;
-
-		walk(ast, (node: AstNode) => {
-			if (
-				!isKind(node, 'function') &&
-				!isKind(node, 'method') &&
-				!isKind(node, 'closure') &&
-				!isKind(node, 'arrowfunc')
-			) {
+		// 遍历第一次，记录所有的变量定义
+		ast.walk((node: AstNode) => {
+			if (!node.parent) return;
+			if (isKind(node, 'assign')) {
+				assignLeftIterator(node.left as AstNode);
 				return;
 			}
 
-			scopeCounter++;
-			const scopeId = scopeCounter;
+			if (isKind(node, 'parameter')) {
+				const param = node.name;
 
-			walk(node.body, (child: AstNode) => {
-				if (!isRenamableVariable(child)) return;
-				if (!child.loc) return;
-				if (child.loc.start.offset === undefined) return;
-				if (child.loc.end.offset === undefined) return;
+				if (isKind(param, 'identifier')) {
+					recordVariable(param);
+				}
+				return;
+			}
 
-				const pos = `${child.loc.start.offset}:${child.loc.end.offset}`;
-				if (visitedOffsets.has(pos)) return; // 已处理过，跳过
-				visitedOffsets.add(pos);
+			if (isKind(node, 'foreach')) {
+				if (isKind(node.value, 'variable')) {
+					recordVariable(node.value);
+				}
+				if (isKind(node.key, 'variable')) {
+					recordVariable(node.key);
+				}
+				return;
+			}
 
-				replacements.push({
-					start: child.loc.start.offset,
-					end: child.loc.end.offset,
-					value: generateName(child.name + ''), // 如果你已经决定全局统一变量名，可以只用 name
+			if (isKind(node, 'catch')) {
+				if (isKind(node.variable, 'variable')) {
+					recordVariable(node.variable);
+				}
+				return;
+			}
+
+			// global 是一个特殊的定义，记录时上下文变量没扫描完，无法确定是否在外部有定义
+			if (isKind(node, 'global')) {
+				node.items.forEach((item) => {
+					if (!isKind(item, 'variable')) return;
+					recordVariable(item, null);
 				});
-			});
+				return;
+			}
 		});
 
-		source = applyReplacements(source, replacements);
-		fs.writeFileSync(file, source, 'utf8');
+		ast.walk((node: AstNode) => {
+			if (!isKind(node, 'variable') && !isKind(node, 'identifier')) return;
+			// 跳过所有和类相关的实现
+			if (isKind(node.parent, 'class')) return;
+			if (isKind(node.parent, 'function')) return;
+			if (isKind(node.parent, 'method')) return;
+			if (isKind(node.parent, 'property')) return;
+			if (isKind(node.parent, 'propertystatement')) return;
+			if (isKind(node.parent, 'propertylookup') && node.getAttribute('source') !== 'what') return;
+			if (isKind(node.parent, 'staticlookup')) return;
+
+			// 查找 global 和 use
+			let record = node.lookup();
+			if (isKind(node.parent, 'global')) {
+				// global 已经定义过了，所以从外面一层找是否有定义
+				record = node.scope.lookup(null, node.name);
+				// 更新来源
+				if (node.record && record) {
+					node.record.setSrouce(record);
+				}
+			}
+
+			if (isKind(node.parent, 'closure') && node.getAttribute('source') === 'uses') {
+				record = node.lookup(1);
+				if (record && record instanceof RecordVariable) {
+					recordVariable(node, record);
+				}
+			}
+
+			if (record) {
+				ast.recordReplacement(node, record.replace);
+			}
+		});
+
+		variables.push(
+			...ast.getAllCaches().map(([varname, record]) => ({
+				varname,
+				replace: record.replace,
+				location: normalizePath(path.relative(Runtime.distRoot, record.location)),
+			})),
+		);
+
+		// ast.applyReplacements();
 	});
 
-	logger.log(`✅️ 变量混淆完成，共 ${variableMap.size} 个变量`);
+	logger.log(`✅️ 变量混淆完成，共 ${variables.length} 个变量`);
 	return buildContext;
 }

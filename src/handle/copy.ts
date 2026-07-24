@@ -3,7 +3,7 @@ import phpMerge from '..';
 import fs from 'fs/promises';
 import path from 'path';
 import { mkdirp } from 'mkdirp';
-import * as logger from '../utils/logger';
+import logger from '../utils/logger';
 export default async function (copyFiles: string[], pathes: { source: string; dist: string }) {
 	for (const file of copyFiles) {
 		const source = path.resolve(pathes.source, file);

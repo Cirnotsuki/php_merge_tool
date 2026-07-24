@@ -3,6 +3,8 @@ cirnotob/*
 dist/*
 entries/*
 temp/*
+.temp/*
+.dev/*
 logs/*
 lib/*
 maps/*

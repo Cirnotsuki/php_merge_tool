@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import uuidv4 from '@ka-libs/crypto/uuidv4';
-import { BuildContext } from '../types';
-import * as logger from '../utils/logger';
+import logger from '../utils/logger';
 import { CONST_PREFIX, EXCLUDE_STRING } from '../config/constans';
-import * as utils from '../utils/utils';
-import { Runtime } from '../config/runtime';
+import utils  from '../utils/utils';
+import { Runtime } from '../core/runtime';
+import { BuildContext } from '../core/buildOption';
 
 // ========================================
 // PHP Define Symbol Compiler

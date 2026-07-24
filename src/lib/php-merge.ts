@@ -2,11 +2,11 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import path from 'path';
 import { mkdirp } from 'mkdirp';
-import { BuildContext } from '../types';
-import * as logger from '../utils/logger';
-import * as utils from '../utils/utils';
-import { Runtime } from '../config/runtime';
+import logger from '../utils/logger';
+import utils  from '../utils/utils';
+import { Runtime } from '../core/runtime';
 import { REQUIRE_TYPES } from '../config/constans';
+import { BuildContext } from '../core/buildOption';
 
 // ========================================
 // PHP Merge Compiler

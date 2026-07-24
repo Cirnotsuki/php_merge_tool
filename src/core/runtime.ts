@@ -1,7 +1,10 @@
 import path from 'path';
 import fs from 'fs';
-import { ENTRIES } from './constans';
-import * as logger from '../utils/logger';
+import { ENTRIES } from '../config/constans';
+import logger from '../utils/logger';
+import config from '../../config';
+import { Ast } from './ast';
+import { BuildOption } from './buildOption';
 
 export class Runtime {
 	private static _sourceDir = '';
@@ -20,6 +23,12 @@ export class Runtime {
 
 	static currentFile: string = '';
 	static currentLine: number = 0;
+	static distRoot: string;
+	static sourceRoot: string;
+	static DEBUG = config.debug;
+	static options: BuildOption = new BuildOption();
+
+	static AstCache = new Map<string, Ast>();
 
 	static get sourceDir() {
 		return this._sourceDir;

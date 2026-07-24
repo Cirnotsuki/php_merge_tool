@@ -1,28 +1,17 @@
 import fs from 'fs';
 import path from 'path';
-import { BuildContext } from '../types';
-import * as logger from '../utils/logger';
-import * as utils from '../utils/utils';
-import { Runtime } from '../config/runtime';
+import logger from '../utils/logger';
+import utils from '../utils/utils';
+import { Runtime } from '../core/runtime';
 import { ENTRIES, EXCLUDES, TARGET_EXTENSION } from '../config/constans';
+import { BuildContext } from '../core/buildOption';
+import { Ast } from '../core/ast';
 
 // ========================================
 // PHP Optimize Compiler
 // ========================================
 
 export default async function (buildContext: BuildContext) {
-	// ========================================
-	// Context
-	// ========================================
-
-	// ========================================
-	// Config
-	// ========================================
-
-	// ========================================
-	// Utils
-	// ========================================
-
 	// ========================================
 	// Strip PHP Comments
 	// ========================================
@@ -167,10 +156,6 @@ export default async function (buildContext: BuildContext) {
 	// Cleanup Empty Lines
 	// ========================================
 
-	// ========================================
-	// Cleanup Empty Lines
-	// ========================================
-
 	function cleanupEmptyLines(content: string) {
 		const lines = content.split(/\r?\n/);
 
@@ -237,10 +222,10 @@ export default async function (buildContext: BuildContext) {
 		const protectedPhp = ENTRIES.includes(path.basename(filePath))
 			? ''
 			: `
-	if (!defined('ABSPATH')) {
-    	header('Location: /');
-    	exit;
-	}
+if (!defined('ABSPATH')) {
+	header('Location: /');
+	exit;
+}
 `;
 
 		/**
@@ -259,27 +244,16 @@ ${protectedPhp}
 		fs.writeFileSync(filePath, headText + cleaned, 'utf8');
 	}
 
-	// ========================================
-	// Walk Directory
-	// ========================================
-
-	// ========================================
-	// Main
-	// ========================================
-
 	logger.log('🧹 开始清理 PHP 注释...\n');
 
-	try {
-		const phpFiles = await utils.scanPHPFile(Runtime.distDir);
-		await utils.fileIterator(phpFiles, async (file) => {
-			/**
-			 * Process File
-			 */
-			await processFile(file);
-		});
-	} catch (err) {
-		logger.error(err);
-	}
+	const phpFiles = await utils.scanPHPFile(Runtime.distDir);
+	await utils.fileIterator(phpFiles, async (file) => {
+		// 执行剩余修改
+		Runtime.AstCache.get(file)?.applyReplacements();
+
+		// 然后清理文件
+		await processFile(file);
+	});
 
 	logger.log('\n🎉 PHP Optimize 完成');
 

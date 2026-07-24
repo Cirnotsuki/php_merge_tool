@@ -26,7 +26,7 @@ export default {
 					dist: 'D:/laragon2/www',
 				},
 
-	buildDirs: ['./api', './wp-content/mu-plugins', './wp-content/themes/cirnotob'],
+	buildDirs: ['./wp-content/mu-plugins', './api', './wp-content/themes/cirnotob'],
 	copyFiles: ['./wp-config.php', './.htaccess'],
 
 	replace: {

@@ -1,42 +1,6 @@
 import type PHPParser from 'php-parser';
-interface BuildRuntime {
-	stringPoolFunction: null | string;
-}
-export interface BuildContext {
-	entryDir: string;
-	distDir: string;
-	date: string;
-	time: number;
-	guid: string;
-	pool: string;
-	replace: { [key: string]: string };
-
-	constants: Map<string, string>;
-	functions: Map<string, string>;
-	hooks: Map<string, string>;
-	classes: Map<string, string>;
-	strings: Map<string, number>;
-	variables: Map<string, string>;
-
-	runtime: BuildRuntime;
-}
-
-export interface BuildOption {
-	date?: string;
-	time?: number;
-	guid?: string;
-	pool?: string;
-	replace?: { [key: string]: string };
-
-	constants?: Map<string, string>;
-	functions?: Map<string, string>;
-	hooks?: Map<string, string>;
-	classes?: Map<string, string>;
-	strings?: Map<string, number>;
-	variables?: Map<string, string>;
-
-	runtime?: BuildRuntime;
-}
+import type { Ast } from '../core/ast';
+import type { RecordBase } from '../core/recordNode';
 
 export interface AstReplacement {
 	start: number;
@@ -52,17 +16,48 @@ export type PHPParserWalkCallBack = (
 
 export type AnyAstNode = AstNodeMap[keyof AstNodeMap];
 
-export type AstNode<T extends PHPParser.Node = PHPParser.Node> = T & {
-	name?: string;
-	parent?: AstNode<AnyAstNode> | null;
-	index?: number;
-	isFirstChild?: boolean;
-	isLastChild?: boolean;
+export type AstBaseNode<T extends PHPParser.Node = PHPParser.Node> = T & {
+	ast: Ast;
+	name: string;
+	parent: AstBaseNode<AnyAstNode> | null;
+
+	attributes: { [key: string]: any };
+	record: RecordBase | null;
+
+	trace: () => void;
+	lookup: (level?: number | null, variableName?: string) => RecordBase | null;
+
+	hasAttribute: (name: string) => boolean;
+	getAttribute: (name: string) => string;
+	setAttribute: (name: string, value: string) => void;
+	recordReplacement: (value: string) => void;
+};
+
+export type AstNode<T extends PHPParser.Node = PHPParser.Node> = AstBaseNode<T> & {
+	parent: AstNode<AnyAstNode> | null;
+	scope: ScopeNode;
+};
+
+export type ScopeNode<
+	T extends PHPParser.Node =
+		| PHPParser.Program
+		| PHPParser.Function
+		| PHPParser.Method
+		| PHPParser.Closure
+		| PHPParser.Block
+		| PHPParser.Class,
+> = AstBaseNode<T> & {
+	scope: ScopeNode;
+	getRecord(name: string): RecordBase | null;
+	getCache(): Map<string, RecordBase>;
+	setCache(name: string, record: RecordBase): void;
+	boundary: (level?: number | null) => ScopeNode | null;
 };
 
 export interface AstNodeMap {
 	node: PHPParser.Node;
 	variable: PHPParser.Variable;
+	assign: PHPParser.Assign;
 	foreach: PHPParser.Foreach;
 	function: PHPParser.Function;
 	class: PHPParser.Class;
@@ -78,11 +73,13 @@ export interface AstNodeMap {
 	return: PHPParser.Return;
 	silent: PHPParser.Silent;
 	encapsed: PHPParser.Encapsed;
+	encapsedpart: PHPParser.EncapsedPart;
 	string: PHPParser.String;
 	constant: PHPParser.Constant;
 	constantstatement: PHPParser.ConstantStatement;
 	classconstant: PHPParser.ClassConstant;
 	property: PHPParser.Property;
+	propertylookup: PHPParser.PropertyLookup;
 	propertystatement: PHPParser.PropertyStatement;
 	attribute: PHPParser.Attribute;
 	attrgroup: PHPParser.AttrGroup;
@@ -91,4 +88,13 @@ export interface AstNodeMap {
 	call: PHPParser.Call;
 	identifier: PHPParser.Identifier;
 	name: PHPParser.Name;
+	selfreference: PHPParser.SelfReference;
+	staticlookup: PHPParser.StaticLookup;
+	new: PHPParser.New;
+	list: PHPParser.List;
+	entry: PHPParser.Entry;
+	block: PHPParser.Block;
+	bin: PHPParser.Bin;
+	expression: PHPParser.Expression;
+	array: PHPParser.Array;
 }

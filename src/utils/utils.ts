@@ -3,7 +3,7 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { toCamelCase } from '@ka-libs/utils/helper';
 import { EXCLUDES, EXTERNAL, RESERGVED } from '../config/constans';
-import { Runtime } from '../config/runtime';
+import { Runtime } from '../core/runtime';
 import { getRandomBytes } from '@ka-libs/crypto/get-random-bytes';
 import type PHPParser from 'php-parser';
 
@@ -61,7 +61,10 @@ export function isExcluded(filePath: string) {
 		return relative === ex || relative.startsWith(ex + '/');
 	});
 }
-
+export function getRelativeFilePath(filePath: string, prefix: string = '') {
+	const rootDir = filePath.includes(Runtime.sourceDir) ? Runtime.sourceDir : Runtime.distDir;
+	return normalizePath(path.relative(rootDir, prefix + filePath));
+}
 export function isReserved(filePath: string) {
 	const rootDir = filePath.includes(Runtime.sourceDir) ? Runtime.sourceDir : Runtime.distDir;
 	const relative = normalizePath(path.relative(rootDir, filePath));
@@ -147,10 +150,39 @@ export async function fileIterator(files: string[], callback: (file: string) => 
 	}
 }
 
-export function getRaw(loc?: PHPParser.Location | null) {
+export function getRaw(loc?: PHPParser.Location | null, highlightLoc?: PHPParser.Location) {
 	if (!loc) return '';
-	const start = loc.start.offset ?? 0;
-	const end = loc.end.offset ?? 0;
-	const fileData = fs.readFileSync(Runtime.currentFile, 'utf-8');
-	return fileData.slice(start, end) || '';
+
+	const fileData = fs.readFileSync(Runtime.currentFile, 'utf8');
+
+	let start = loc.start.offset ?? 0;
+	let end = loc.end.offset ?? 0;
+
+	if (!highlightLoc) {
+		return fileData.slice(start, end);
+	}
+
+	while (start > 0 && fileData[start - 1] !== '\n') {
+		start--;
+	}
+
+	while (end < fileData.length && fileData[end] !== '\n') {
+		end++;
+	}
+
+	const raw = fileData.slice(start, end);
+
+	const highlightStart = (highlightLoc.start.offset ?? 0) - start;
+
+	const highlightEnd = (highlightLoc.end.offset ?? 0) - start;
+
+	return (
+		raw.slice(0, highlightStart) +
+		'【 ' +
+		raw.slice(highlightStart, highlightEnd) +
+		' 】' +
+		raw.slice(highlightEnd)
+	);
 }
+
+export * as default from './utils';

@@ -1,5 +1,6 @@
 import { DEBUG } from '../config/constans';
 import chalk from 'chalk';
+import { Runtime } from '../core/runtime';
 
 // import WebSocket from 'ws';
 // const wss = new WebSocket.OPEN({ port: 3001 });
@@ -10,25 +11,27 @@ import chalk from 'chalk';
 // 	});
 // }
 export function log(...args: any[]) {
-	if (DEBUG) {
+	if (Runtime.DEBUG) {
 		console.log('[INFO]', ...args);
 	}
 }
 
 export function instance(...args: any[]) {
-	if (DEBUG) {
+	if (Runtime.DEBUG) {
 		console.warn('[INST]', ...args);
 	}
 }
 
 export function warn(...args: any[]) {
-	if (DEBUG) {
+	if (Runtime.DEBUG) {
 		console.warn(...args);
 	}
 }
 
 export function error(...args: any[]) {
-	if (DEBUG) {
-		console.error(...args);
-	}
+	console.error(...args);
+
+	return new Error(...args);
 }
+
+export * as default from './logger';
